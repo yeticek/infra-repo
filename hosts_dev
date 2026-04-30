@@ -1,0 +1,8 @@
+[all:vars]
+env=dev
+
+[dev]
+vagrant1
+vagrant2
+vagrant3
+dev-dns

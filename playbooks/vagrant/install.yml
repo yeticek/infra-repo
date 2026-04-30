@@ -1,0 +1,69 @@
+---
+- name: Provision three Ubuntu 24 VMs with Vagrant
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    vagrant_project_dir: "{{ playbook_dir }}/.vagrant-ubuntu24"
+    vagrant_provider: virtualbox
+    # if i have time use alpine instead
+    #vagrant_box: generic/alpine318
+    vagrant_box: bento/ubuntu-24.04
+    vm_cpus: 2
+    vm_memory_mb: 2048
+    vm_definitions:
+      - name: vagrant1
+        ip: 10.40.56.11
+      - name: vagrant2
+        ip: 10.40.56.12
+      - name: vagrant3
+        ip: 10.40.56.13
+
+  tasks:
+    - name: Ensure local Vagrant project directory exists
+      ansible.builtin.file:
+        path: "{{ vagrant_project_dir }}"
+        state: directory
+
+    - name: Verify Vagrant is installed
+      ansible.builtin.command: vagrant --version
+      changed_when: false
+
+    - name: Verify VirtualBox is installed
+      ansible.builtin.command: VBoxManage --version
+      changed_when: false
+
+    - name: Render Vagrantfile for Ubuntu 24 VMs
+      ansible.builtin.copy:
+        dest: "{{ vagrant_project_dir }}/Vagrantfile"
+        mode: "0644"
+        content: |
+          Vagrant.configure("2") do |config|
+            config.vm.box = "{{ vagrant_box }}"
+
+          {% for vm in vm_definitions %}
+            config.vm.define "{{ vm.name }}" do |node|
+              node.vm.hostname = "{{ vm.name }}"
+              node.vm.network "private_network", ip: "{{ vm.ip }}"
+
+              node.vm.provider "{{ vagrant_provider }}" do |provider|
+                provider.memory = {{ vm_memory_mb }}
+                provider.cpus = {{ vm_cpus }}
+              end
+            end
+
+          {% endfor %}
+          end
+
+    - name: Bring up VMs
+      ansible.builtin.command: vagrant up --provider={{ vagrant_provider }}
+      args:
+        chdir: "{{ vagrant_project_dir }}"
+
+    - name: Show VM status
+      ansible.builtin.command: vagrant status
+      args:
+        chdir: "{{ vagrant_project_dir }}"
+      changed_when: false
+

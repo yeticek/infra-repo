@@ -1,0 +1,20 @@
+---
+- name: install docker nginx
+  hosts: docker
+  tasks:
+
+    - name: make log directory
+      file:
+        path: /apps/logs/nginx
+        state: directory
+
+    - name: make app nginx dir
+      file:
+        path: /apps/nginx
+        state: directory
+
+    - name: copy configuration files
+      copy:
+        src: config/
+        dest: /apps/nginx
+        mode: 0644
