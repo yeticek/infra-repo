@@ -7,6 +7,7 @@
   vars:
     vagrant_project_dir: "{{ playbook_dir }}/.vagrant-ubuntu24"
     vagrant_provider: virtualbox
+    vagrant_boot_timeout: 900
     # if i have time use alpine instead
     #vagrant_box: generic/alpine318
     vagrant_box: bento/ubuntu-24.04
@@ -14,11 +15,15 @@
     vm_memory_mb: 2048
     vm_definitions:
       - name: vagrant1
-        ip: 10.40.56.11
+        ip: 192.168.56.11
       - name: vagrant2
-        ip: 10.40.56.12
+        ip: 192.168.56.12
       - name: vagrant3
-        ip: 10.40.56.13
+        ip: 192.168.56.13
+      - name: vagrant-dns
+        ip: 192.168.56.14
+      - name: vagrant-infra
+        ip: 192.168.56.15
 
   tasks:
     - name: Ensure local Vagrant project directory exists
@@ -41,6 +46,11 @@
         content: |
           Vagrant.configure("2") do |config|
             config.vm.box = "{{ vagrant_box }}"
+            config.ssh.insert_key = false
+            config.vm.boot_timeout = {{ vagrant_boot_timeout }}
+            config.vm.provider "{{ vagrant_provider }}" do |vb|
+              vb.linked_clone = true
+            end
 
           {% for vm in vm_definitions %}
             config.vm.define "{{ vm.name }}" do |node|
@@ -56,10 +66,16 @@
           {% endfor %}
           end
 
-    - name: Bring up VMs
-      ansible.builtin.command: vagrant up --provider={{ vagrant_provider }}
+    - name: Bring up VMs one by one (more reliable on first boot)
+      ansible.builtin.command: >-
+        vagrant up {{ item.name }} --provider={{ vagrant_provider }} --no-parallel
       args:
         chdir: "{{ vagrant_project_dir }}"
+      loop: "{{ vm_definitions }}"
+      register: vagrant_up_result
+      retries: 2
+      delay: 20
+      until: vagrant_up_result is succeeded
 
     - name: Show VM status
       ansible.builtin.command: vagrant status

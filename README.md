@@ -13,4 +13,6 @@
 ```bash
 docker run --rm -v "$(pwd):/apps/ansible" -w /apps/ansible alpine/ansible:2.20.0 ansible-playbook -i hosts_dev playbooks/nginx/install.yml -l dev
 docker run --rm -v "$(pwd):/apps/ansible" -w /apps/ansible alpine/ansible:2.20.0 ansible-playbook -i hosts_dev --syntax-check playbooks/vagrant/install.yml
+ansible-playbook -i hosts_dev playbooks/minikube/install.yml -l k8s_minikube
+ansible -i hosts_dev k8s_minikube -a "minikube kubectl -- get nodes -o wide"
 ```

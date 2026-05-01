@@ -1,8 +1,14 @@
 [all:vars]
 env=dev
+ansible_user=vagrant
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 
 [dev]
-vagrant1
-vagrant2
-vagrant3
-dev-dns
+vagrant1 ansible_host=192.168.56.11
+vagrant2 ansible_host=192.168.56.12
+vagrant3 ansible_host=192.168.56.13
+vagrant-dns ansible_host=192.168.56.14
+vagrant-infra ansible_host=192.168.56.15
+
+[k8s_minikube]
+vagrant-infra

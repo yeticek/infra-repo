@@ -3,3 +3,5 @@
 
 .idea
 playbooks/vagrant/.vagrant-ubuntu24
+Vagrantfile
+.vagrant
