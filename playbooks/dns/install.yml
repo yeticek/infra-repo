@@ -1,0 +1,57 @@
+---
+- name: Configure DNS record for nginx service
+  hosts: dns
+  become: true
+  gather_facts: false
+
+  vars:
+    dns_server_ip: "{{ ansible_host | default(inventory_hostname) }}"
+    dns_backend_ips: >-
+      {{
+        dns_record_backend_ips
+        | default(groups['nginx'] | map('extract', hostvars, 'ansible_host') | list)
+      }}
+
+  tasks:
+    - name: Install dnsmasq and dig utility
+      ansible.builtin.apt:
+        name:
+          - dnsmasq
+          - dnsutils
+        update_cache: true
+        state: present
+
+    - name: Configure dnsmasq record for nginx-test.io.sk
+      ansible.builtin.copy:
+        dest: /etc/dnsmasq.d/nginx-test.conf
+        mode: "0644"
+        content: |
+          # Serve a multi-A record for nginx service running on vagrant1/2/3.
+          bind-interfaces
+          listen-address={{ dns_server_ip }}
+          host-record={{ dns_record_fqdn }},{{ dns_backend_ips | join(',') }}
+      notify: Restart dnsmasq
+
+    - name: Ensure dnsmasq service is enabled and running
+      ansible.builtin.service:
+        name: dnsmasq
+        state: started
+        enabled: true
+
+    - name: Flush handlers before validation
+      ansible.builtin.meta: flush_handlers
+
+    - name: Validate DNS answers contain all nginx backend IPs
+      ansible.builtin.command: "dig +short @{{ dns_server_ip }} {{ dns_record_fqdn }}"
+      register: dns_query
+      changed_when: false
+      failed_when: >-
+        (dns_query.stdout_lines | length == 0)
+        or ((dns_query.stdout_lines | difference(dns_backend_ips)) | length > 0)
+
+  handlers:
+    - name: Restart dnsmasq
+      ansible.builtin.service:
+        name: dnsmasq
+        state: restarted
+

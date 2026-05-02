@@ -1,0 +1,7 @@
+---
+dns_record_fqdn: nginx-test.io.sk
+dns_record_backend_ips:
+  - 192.168.56.11
+  - 192.168.56.12
+  - 192.168.56.13
+

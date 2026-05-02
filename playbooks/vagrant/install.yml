@@ -24,6 +24,8 @@
         ip: 192.168.56.14
       - name: vagrant-infra
         ip: 192.168.56.15
+      - name: vagrant-argo
+        ip: 192.168.56.16
 
   tasks:
     - name: Ensure local Vagrant project directory exists

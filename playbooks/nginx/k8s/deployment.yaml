@@ -13,6 +13,17 @@ spec:
       labels:
         app: nginx-static
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - vagrant1
+                      - vagrant2
+                      - vagrant3
       containers:
         - name: nginx
           image: nginx:1.27-alpine

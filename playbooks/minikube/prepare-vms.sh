@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for n in vagrant1 vagrant2 vagrant3 vagrant-dns vagrant-infra; do
+for n in vagrant1 vagrant2 vagrant3 vagrant-dns vagrant-infra vagrant-argo; do
   vagrant ssh "$n" -c '
     set -e
     sudo swapoff -a
