@@ -22,6 +22,6 @@ ansible-playbook -i hosts_dev playbooks/trivy/install.yml --limit vagrant-infra 
 vagrant ssh vagrant-infra -c "trivy --version"
 vagrant ssh vagrant-infra -c "ls -lah /var/tmp/trivy-reports"
 vagrant ssh vagrant-infra -c "sed -n '1,80p' /var/tmp/trivy-reports/web-nginx-static-image-report.txt"
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /home/kysel/.vagrant.d/insecure_private_key vagrant@192.168.56.15 "sed -n '1,60p' /var/tmp/trivy-reports/web-nginx-static-image-report.txt"
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /home/CHANGE_ME/.vagrant.d/insecure_private_key vagrant@192.168.56.15 "sed -n '1,60p' /var/tmp/trivy-reports/web-nginx-static-image-report.txt"
 ```
 
