@@ -17,7 +17,6 @@
 ## Install order
 * vagrant playbook
 * minikube sh scripts
-* istio playbook
 * nginx k8s scripts
 * trivy playbook
 * dns playbook
