@@ -1,6 +1,21 @@
 # ArgoCD
 
-## Install on k8s cluster
+## Kubernetes manifests
+
+The `k8s/` directory contains Kustomize manifests that:
+- create the `argocd` namespace
+- install ArgoCD from the upstream stable manifest
+- patch `argocd-server` to a **NodePort** service (`:30400` for HTTPS, `:30080` for HTTP)
+- declare the `nginx-html` ArgoCD `Application` resource
+
+Apply everything in one shot:
+```bash
+vagrant ssh vagrant-argo -c "kubectl apply --server-side --force-conflicts -k /vagrant/playbooks/argocd/k8s"
+```
+
+---
+
+## Install on k8s cluster (imperative, for reference)
 Install on vagrant-argo instance
 ```bash
 vagrant ssh vagrant-argo -c "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -"

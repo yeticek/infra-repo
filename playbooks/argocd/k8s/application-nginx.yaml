@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-html
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yeticek/infra-repo.git
+    targetRevision: HEAD
+    path: playbooks/nginx/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: web
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

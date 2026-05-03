@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # ArgoCD namespace
+  - namespace.yaml
+  # ArgoCD core install (upstream stable manifest)
+  - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  # Patch the argocd-server Service to NodePort so the UI is reachable
+  - argocd-server-nodeport.yaml
+  # ArgoCD Application for the nginx static site
+  - application-nginx.yaml
+
