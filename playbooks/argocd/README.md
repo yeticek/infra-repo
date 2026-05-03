@@ -1,13 +1,13 @@
 # ArgoCD
 
 ## Install on k8s cluster
-Install on vagrant-infra instance
+Install on vagrant-argo instance
 ```bash
-vagrant ssh vagrant-infra -c "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -"
-vagrant ssh vagrant-infra -c "kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
-vagrant ssh vagrant-infra -c "kubectl -n argocd rollout status deploy/argocd-server --timeout=300s"
-vagrant ssh vagrant-infra -c "command -v argocd >/dev/null || (curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd && rm argocd-linux-amd64)"
-vagrant ssh vagrant-infra -c "argocd version --client"
+vagrant ssh vagrant-argo -c "kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -"
+vagrant ssh vagrant-argo -c "kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+vagrant ssh vagrant-argo -c "kubectl -n argocd rollout status deploy/argocd-server --timeout=300s"
+vagrant ssh vagrant-argo -c "command -v argocd >/dev/null || (curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd && rm argocd-linux-amd64)"
+vagrant ssh vagrant-argo -c "argocd version --client"
 ```
 
 ## Access ArgoCD UI
