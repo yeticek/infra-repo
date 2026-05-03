@@ -1,0 +1,233 @@
+---
+- name: Install Istio service mesh on Kubernetes cluster
+  hosts: k8s_minikube
+  become: true
+  gather_facts: false
+
+  vars:
+    istio_version_effective: "{{ istio_version | default('1.27.0') }}"
+    istio_profile_effective: "{{ istio_profile | default('minimal') }}"
+    istio_namespace_effective: "{{ istio_namespace | default('istio-system') }}"
+    istio_arch_effective: "{{ istio_arch | default('linux-amd64') }}"
+    istio_enable_ingress_gateway_effective: "{{ istio_enable_ingress_gateway | default(false) | bool }}"
+    istio_enable_egress_gateway_effective: "{{ istio_enable_egress_gateway | default(false) | bool }}"
+    istioctl_readiness_timeout_effective: "{{ istioctl_readiness_timeout | default('10m') }}"
+    istio_rollout_timeout_effective: "{{ istio_rollout_timeout | default('600s') }}"
+    istio_collect_diagnostics_on_failure_effective: "{{ istio_collect_diagnostics_on_failure | default(true) | bool }}"
+    istioctl_archive: "istioctl-{{ istio_version_effective }}-{{ istio_arch_effective }}.tar.gz"
+    istioctl_url: "https://github.com/istio/istio/releases/download/{{ istio_version_effective }}/{{ istioctl_archive }}"
+    istioctl_tmp_dir: "/tmp/istioctl-{{ istio_version_effective }}"
+    kubeconfig_path_effective: "{{ kubeconfig_path | default('/home/vagrant/.kube/config') }}"
+
+  tasks:
+    - name: Ensure prerequisites are installed
+      ansible.builtin.apt:
+        name:
+          - curl
+          - tar
+        update_cache: true
+        state: present
+
+    - name: Download istioctl archive
+      ansible.builtin.get_url:
+        url: "{{ istioctl_url }}"
+        dest: "/tmp/{{ istioctl_archive }}"
+        mode: "0644"
+
+    - name: Ensure temporary extraction directory exists
+      ansible.builtin.file:
+        path: "{{ istioctl_tmp_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Extract istioctl archive
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ istioctl_archive }}"
+        dest: "{{ istioctl_tmp_dir }}"
+        remote_src: true
+
+    - name: Install istioctl binary
+      ansible.builtin.copy:
+        src: "{{ istioctl_tmp_dir }}/istioctl"
+        dest: /usr/local/bin/istioctl
+        mode: "0755"
+        remote_src: true
+
+    - name: Verify kubeconfig is present
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path_effective }}"
+      register: kubeconfig_stat
+
+    - name: Fail when kubeconfig is missing
+      ansible.builtin.fail:
+        msg: "Kubeconfig not found at {{ kubeconfig_path_effective }}. Run playbooks/minikube/configure-kube.sh first."
+      when: not kubeconfig_stat.stat.exists
+
+    - name: Ensure Istio namespace exists
+      ansible.builtin.shell: |
+        kubectl create namespace {{ istio_namespace_effective }} --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+
+    - name: Install or upgrade Istio control plane
+      block:
+        - name: Run istioctl install
+          ansible.builtin.command: >-
+            istioctl install
+            --set profile={{ istio_profile_effective }}
+            --set values.gateways.istio-ingressgateway.enabled={{ 'true' if istio_enable_ingress_gateway_effective else 'false' }}
+            --set values.gateways.istio-egressgateway.enabled={{ 'true' if istio_enable_egress_gateway_effective else 'false' }}
+            --readiness-timeout={{ istioctl_readiness_timeout_effective }}
+            -y
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          changed_when: false
+
+      rescue:
+        - name: Collect Istio deployments and pods
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} get deploy,pods -o wide
+          register: istio_state
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when: istio_collect_diagnostics_on_failure_effective
+
+        - name: Collect ingress gateway describe output
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} describe deployment/istio-ingressgateway
+          register: ingress_deploy_describe
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when:
+            - istio_collect_diagnostics_on_failure_effective
+            - istio_enable_ingress_gateway_effective
+
+        - name: Collect ingress gateway proxy logs
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} logs deployment/istio-ingressgateway -c istio-proxy --tail=120
+          register: ingress_proxy_logs
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when:
+            - istio_collect_diagnostics_on_failure_effective
+            - istio_enable_ingress_gateway_effective
+
+        - name: Collect egress gateway describe output
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} describe deployment/istio-egressgateway
+          register: egress_deploy_describe
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when:
+            - istio_collect_diagnostics_on_failure_effective
+            - istio_enable_egress_gateway_effective
+
+        - name: Collect egress gateway proxy logs
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} logs deployment/istio-egressgateway -c istio-proxy --tail=120
+          register: egress_proxy_logs
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when:
+            - istio_collect_diagnostics_on_failure_effective
+            - istio_enable_egress_gateway_effective
+
+        - name: Collect recent Istio namespace events
+          ansible.builtin.command: >-
+            kubectl -n {{ istio_namespace_effective }} get events --sort-by=.lastTimestamp
+          register: istio_events
+          changed_when: false
+          failed_when: false
+          environment:
+            KUBECONFIG: "{{ kubeconfig_path_effective }}"
+            HOME: /home/vagrant
+          when: istio_collect_diagnostics_on_failure_effective
+
+        - name: Fail with install diagnostics
+          ansible.builtin.fail:
+            msg: |
+              istioctl install failed. Common causes are image pull/network issues or insufficient cluster resources for gateway pods.
+
+              istioctl stderr:
+              {{ ansible_failed_result.stderr | default('N/A') }}
+
+              Deployments and pods:
+              {{ istio_state.stdout | default('N/A') }}
+
+              Recent events:
+              {{ istio_events.stdout | default('N/A') }}
+
+    - name: Wait for istiod rollout
+      ansible.builtin.command: >-
+        kubectl -n {{ istio_namespace_effective }} rollout status deployment/istiod --timeout={{ istio_rollout_timeout_effective }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+
+    - name: Wait for ingress gateway rollout when enabled
+      ansible.builtin.shell: |
+        if kubectl -n {{ istio_namespace_effective }} get deployment/istio-ingressgateway >/dev/null 2>&1; then
+          kubectl -n {{ istio_namespace_effective }} rollout status deployment/istio-ingressgateway --timeout={{ istio_rollout_timeout_effective }}
+        fi
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+      when: istio_enable_ingress_gateway_effective
+
+    - name: Wait for egress gateway rollout when enabled
+      ansible.builtin.shell: |
+        if kubectl -n {{ istio_namespace_effective }} get deployment/istio-egressgateway >/dev/null 2>&1; then
+          kubectl -n {{ istio_namespace_effective }} rollout status deployment/istio-egressgateway --timeout={{ istio_rollout_timeout_effective }}
+        fi
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+      when: istio_enable_egress_gateway_effective
+
+    - name: Enable automatic sidecar injection for web namespace
+      ansible.builtin.command: >-
+        kubectl label namespace web istio-injection=enabled --overwrite
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+
+    - name: Restart nginx deployment to inject sidecar when deployment exists
+      ansible.builtin.shell: |
+        if kubectl -n web get deployment/nginx-static >/dev/null 2>&1; then
+          kubectl -n web rollout restart deployment/nginx-static
+          kubectl -n web rollout status deployment/nginx-static --timeout=300s
+        fi
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+
+    - name: Verify istioctl client version
+      ansible.builtin.command: istioctl version --remote=false
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+      changed_when: false
+

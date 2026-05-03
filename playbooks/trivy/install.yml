@@ -1,0 +1,134 @@
+---
+- name: Install and run Trivy vulnerability scan for nginx app
+  hosts: k8s_minikube
+  become: true
+  gather_facts: true
+
+  vars:
+    trivy_version_effective: "{{ trivy_version | default('0.70.0') }}"
+    trivy_severity_effective: "{{ trivy_severity | default('HIGH,CRITICAL') }}"
+    trivy_timeout_effective: "{{ trivy_timeout | default('10m') }}"
+    trivy_ignore_unfixed_effective: "{{ trivy_ignore_unfixed | default(true) | bool }}"
+    trivy_report_dir_effective: "{{ trivy_report_dir | default('/var/tmp/trivy-reports') }}"
+    trivy_target_namespace_effective: "{{ trivy_target_namespace | default('web') }}"
+    trivy_target_deployment_effective: "{{ trivy_target_deployment | default('nginx-static') }}"
+    trivy_target_container_index_effective: "{{ trivy_target_container_index | default(0) }}"
+    kubeconfig_path_effective: "{{ kubeconfig_path | default('/home/vagrant/.kube/config') }}"
+    trivy_platform_map:
+      x86_64: Linux-64bit
+      aarch64: Linux-ARM64
+      arm64: Linux-ARM64
+    trivy_platform_effective: "{{ trivy_platform_map[ansible_facts['architecture']] | default('Linux-64bit') }}"
+    trivy_archive: "trivy_{{ trivy_version_effective }}_{{ trivy_platform_effective }}.tar.gz"
+    trivy_url: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version_effective }}/{{ trivy_archive }}"
+    trivy_tmp_dir: "/tmp/trivy-{{ trivy_version_effective }}"
+    trivy_report_file: >-
+      {{ trivy_report_dir_effective }}/{{ trivy_target_namespace_effective }}-{{ trivy_target_deployment_effective }}-image-report.txt
+
+  tasks:
+    - name: Ensure prerequisites are installed
+      ansible.builtin.apt:
+        name:
+          - curl
+          - tar
+        state: present
+        update_cache: true
+
+    - name: Download Trivy archive
+      ansible.builtin.get_url:
+        url: "{{ trivy_url }}"
+        dest: "/tmp/{{ trivy_archive }}"
+        mode: "0644"
+
+    - name: Ensure Trivy extraction directory exists
+      ansible.builtin.file:
+        path: "{{ trivy_tmp_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Extract Trivy archive
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ trivy_archive }}"
+        dest: "{{ trivy_tmp_dir }}"
+        remote_src: true
+
+    - name: Install Trivy binary
+      ansible.builtin.copy:
+        src: "{{ trivy_tmp_dir }}/trivy"
+        dest: /usr/local/bin/trivy
+        mode: "0755"
+        remote_src: true
+
+    - name: Verify kubeconfig is present
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path_effective }}"
+      register: kubeconfig_stat
+
+    - name: Fail when kubeconfig is missing
+      ansible.builtin.fail:
+        msg: "Kubeconfig not found at {{ kubeconfig_path_effective }}. Run playbooks/minikube/configure-kube.sh first."
+      when: not kubeconfig_stat.stat.exists
+
+    - name: Ensure Trivy report directory exists
+      ansible.builtin.file:
+        path: "{{ trivy_report_dir_effective }}"
+        state: directory
+        mode: "0755"
+
+    - name: Resolve application image from Kubernetes deployment
+      ansible.builtin.command: >-
+        kubectl -n {{ trivy_target_namespace_effective }}
+        get deployment/{{ trivy_target_deployment_effective }}
+        -o jsonpath={.spec.template.spec.containers[{{ trivy_target_container_index_effective }}].image}
+      register: nginx_image
+      changed_when: false
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path_effective }}"
+        HOME: /home/vagrant
+
+    - name: Fail when application image could not be resolved
+      ansible.builtin.fail:
+        msg: >-
+          Could not resolve container image from deployment
+          {{ trivy_target_namespace_effective }}/{{ trivy_target_deployment_effective }}.
+          Deploy the application first.
+      when: nginx_image.rc != 0 or (nginx_image.stdout | trim) == ''
+
+    - name: Generate Trivy vulnerability report for application image
+      ansible.builtin.command: >-
+        trivy image --scanners vuln --format table --exit-code 0
+        --severity {{ trivy_severity_effective }}
+        --timeout {{ trivy_timeout_effective }}
+        {{ '--ignore-unfixed' if trivy_ignore_unfixed_effective else '' }}
+        {{ nginx_image.stdout | trim }}
+      register: trivy_report
+      changed_when: false
+
+    - name: Save Trivy report to file
+      ansible.builtin.copy:
+        dest: "{{ trivy_report_file }}"
+        content: "{{ trivy_report.stdout }}\n"
+        mode: "0644"
+
+    - name: Enforce vulnerability threshold for application image
+      ansible.builtin.command: >-
+        trivy image --scanners vuln --format table --exit-code 1
+        --severity {{ trivy_severity_effective }}
+        --timeout {{ trivy_timeout_effective }}
+        {{ '--ignore-unfixed' if trivy_ignore_unfixed_effective else '' }}
+        {{ nginx_image.stdout | trim }}
+      register: trivy_gate
+      changed_when: false
+      failed_when: false
+
+    - name: Fail when vulnerabilities exceed threshold
+      ansible.builtin.fail:
+        msg: >-
+          Trivy found {{ trivy_severity_effective }} vulnerabilities in image
+          {{ nginx_image.stdout | trim }}.
+          Review report: {{ trivy_report_file }}
+      when: trivy_gate.rc != 0
+
+    - name: Show report location when scan passes
+      ansible.builtin.debug:
+        msg: "Trivy scan passed. Report saved to {{ trivy_report_file }}"

@@ -5,3 +5,21 @@ dns_record_backend_ips:
   - 192.168.56.12
   - 192.168.56.13
 
+istio_version: 1.27.0
+istio_profile: minimal
+istio_namespace: istio-system
+istio_arch: linux-amd64
+istio_enable_ingress_gateway: false
+istio_enable_egress_gateway: false
+istioctl_readiness_timeout: 10m
+istio_rollout_timeout: 600s
+
+trivy_version: 0.70.0
+trivy_severity: HIGH,CRITICAL
+trivy_timeout: 10m
+trivy_ignore_unfixed: true
+trivy_report_dir: /var/tmp/trivy-reports
+trivy_target_namespace: web
+trivy_target_deployment: nginx-static
+trivy_target_container_index: 0
+
